@@ -47,18 +47,19 @@ static inline uint64_t r_satp() {
     return x;
 }
 
-char names[MAX_APP_NUM][MAX_STR_LEN];
+// char names[MAX_APP_NUM][MAX_STR_LEN];
 
-static inline void app_info() {
-    char *s;
-    s = _app_names;
-    for (int i = 0; i < ((uint64_t *)_app_num)[0]; i++) {
-        int len = strlen(s);
-        strncpy(names[i], (const char *)s, len);
-        s += len + 1;
-        Info("name %d addr %x : %s", i, ((uint64_t *)_app_num)[i + 1], names[i]);
-    }
-}
+// static inline void app_info() {
+//     char *s;
+//     s = _app_names;
+//     for (int i = 0; i < ((uint64_t *)_app_num)[0]; i++) {
+//         int len = strlen(s);
+//         strncpy(names[i], (const char *)s, len);
+//         s += len + 1;
+//         Info("name %d addr %x : %s", i, ((uint64_t *)_app_num)[i + 1],
+//         names[i]);
+//     }
+// }
 
 struct fat32disk disk;
 
@@ -79,7 +80,7 @@ void kernel_start(uint64_t hartid, uint64_t dtb_pa) {
 
     // init_clock();
 
-    app_info();
+    //    app_info();
     process_init();
     Warn("process manager init");
 
@@ -116,15 +117,15 @@ struct buf *test_buf = bread(1, 0);
     // while (1) {
     // }
     //   TODO:在fork时如果是从u态跳到s态进行fork，会直接page fault
-    alloc_proc(((uint64_t *)_app_num)[1], names[0]);
-    alloc_proc(((uint64_t *)_app_num)[15], names[14]);
-    alloc_proc(((uint64_t *)_app_num)[25], names[24]);
-    alloc_proc(((uint64_t *)_app_num)[13], names[12]);
-    alloc_proc(((uint64_t *)_app_num)[14], names[13]);
-    alloc_proc(((uint64_t *)_app_num)[26], names[25]);
-    alloc_proc(((uint64_t *)_app_num)[28], names[27]);
-    alloc_proc(((uint64_t *)_app_num)[9], names[8]);
-    alloc_proc(((uint64_t *)_app_num)[33], names[32]);
+    //    alloc_proc(((uint64_t *)_app_num)[1], names[0]);
+    //    alloc_proc(((uint64_t *)_app_num)[15], names[14]);
+    //    alloc_proc(((uint64_t *)_app_num)[25], names[24]);
+    //    alloc_proc(((uint64_t *)_app_num)[13], names[12]);
+    //    alloc_proc(((uint64_t *)_app_num)[14], names[13]);
+    //    alloc_proc(((uint64_t *)_app_num)[26], names[25]);
+    //    alloc_proc(((uint64_t *)_app_num)[28], names[27]);
+    //    alloc_proc(((uint64_t *)_app_num)[9], names[8]);
+    //    alloc_proc(((uint64_t *)_app_num)[33], names[32]);
     Warn("kernel start success");
 
     sched();

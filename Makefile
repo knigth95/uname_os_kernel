@@ -150,10 +150,12 @@ else
 endif
 
 
+all: build
 build: build/kernel
 
 build/kernel: $(OBJS) $(LINK_SCRIPT)
 	$(LD) $(LDFLAGS) -T $(LINK_SCRIPT) -o $(BUILDDIR)/kernel $(OBJS)
+	cp $(BUILDDIR)/kernel ./kernel.elf
 	$(OBJDUMP) -S $(BUILDDIR)/kernel > $(BUILDDIR)/kernel.asm
 	$(OBJDUMP) -t $(BUILDDIR)/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $(BUILDDIR)/kernel.sym
 	$(OBJCOPY) --strip-all $(BUILDDIR)/kernel -O binary $(BUILDDIR)/kernel
