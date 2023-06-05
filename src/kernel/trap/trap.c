@@ -392,16 +392,20 @@ void info_registers(const struct Regs *regs) {
     Info("%s : %p", "satp", regs->csr_regs.satp);
 }
 
-uint8_t kernel_process_stack[4096];
+// uint8_t kernel_process_stack[4096];
 
 void init_trap() {
     // set trap handler func
-    extern void _alltrap();
-    write_csr(stvec, _alltrap);
+    //    extern void _alltrap();
+    extern void ktrap();
+    //    write_csr(stvec, _alltrap);
+    // 从s态发起的中断通过ktrap处理
+    write_csr(stvec, ktrap);
 
     // 栈一定是高地址开始，向低地址增长，因此只能存高地址进去，不然直接爆栈
     // set kernel trap stack
-    write_csr(sscratch, kernel_process_stack + 4096);
+    // smod -> smod 这个过程不需要换栈，内核只有自己的内核栈
+    // write_csr(sscratch, kernel_process_stack + 4096);
 
     // disable s mod trap
     smod_disable_trap;
@@ -419,8 +423,37 @@ void init_trap() {
     // enable time trap
     sie_stie_enable;
     //    init_clock();
+}
 
-    Info("trap init");
+void kernel_handler(struct Regs *regs) {
+    uint64_t scause = read_csr(scause);
+
+#undef DEBUG
+#ifdef DEBUG
+    Info("current process %s", get_current_process()->proc_name);
+
+    info_registers(regs);
+#endif
+
+    // 处理完之后应当是已经调度完的状态
+    if ((long)scause > 0) {
+        Info("kernel exception happen");
+        // smod->smod 一般不处理exception
+        exception_jump_table[scause].func(regs, "exception");
+    } else {
+        interrupt_jump_table[scause].func(regs, "interrupt");
+    }
+
+    extern void krestore(struct Regs * regs);
+
+    // 如果来源与smod则直接return，如果是umod，则出问题，因为umod不会跳到这里
+    if ((read_csr(sstatus) & SSTATUS_SPP)) {
+        krestore(regs);
+    } else {
+        Error("user mod should not be here");
+        while (1) {
+        }
+    }
 }
 
 // void *all_handler(struct Regs *regs) {
@@ -440,11 +473,12 @@ struct Regs *regs = get_current_process()->pcb.context;
 
     // 源自用户态的陷入，更换为smod处理程序
     if (!(read_csr(sstatus) & SSTATUS_SPP)) {
-        Info("from user mod");
         extern void ktrap();
         write_csr(stvec, (uint64_t)ktrap & ~0x3);
     } else {
-        Info("from kernel mod");
+        Error("kernel mod should not be here");
+        while (1) {
+        }
     }
 
     // 处理完之后应当是已经调度完的状态
@@ -455,23 +489,30 @@ struct Regs *regs = get_current_process()->pcb.context;
     }
 
     if (get_current_process() == NULL) {
-        Info("all task run over");
-        sbi_shutdown();
-        while (1) {
+#if DEBUG
+        Info("task run over");
+#endif
+        extern AppFileNames_t global_loader;
+        extern int app_loader(AppFileNames_t * afn);
+        int status = app_loader(&global_loader);
+        while (status == -2) {
+            status = app_loader(&global_loader);
         }
+        if (status == -1) {
+            sbi_shutdown();
+            while (1) {
+            }
+        }
+        sched();
     }
 
-    extern void _trap_restore(uintptr_t satp, char *context);
-    extern void krestore(uintptr_t satp, char *context);
-
     if (!(read_csr(sstatus) & SSTATUS_SPP)) {
-        extern void _alltrap();
-        write_csr(stvec, (uint64_t)_alltrap & ~0x3);
+        extern void _trap_restore(uintptr_t satp, char *context);
+        // write_csr(stvec, (uint64_t)_alltrap & ~0x3);
         _trap_restore(get_current_process()->pcb.context->csr_regs.satp,
                       (void *)get_current_process()->pcb.context);
     } else {
-        krestore(get_current_process()->pcb.context->csr_regs.satp,
-                 (void *)get_current_process()->pcb.kcontext);
+        Error("should not be hear");
     }
 }
 
@@ -499,7 +540,7 @@ void *smod_outside_intertupt(struct Regs *regs, const char *name) {
     case VIRTIO_IRQ:
         virtio_disk_intr();
         // 关中断
-        regs->csr_regs.sstatus = regs->csr_regs.sstatus & ~SSTATUS_SPIE;
+        // regs->csr_regs.sstatus = regs->csr_regs.sstatus & ~SSTATUS_SPIE;
         break;
     default:
         Error("unknown irq %d", irq);
@@ -520,6 +561,10 @@ void *smod_instructions_not_aligned(struct Regs *regs, const char *name) {
 }
 void *smod_instruction_access_exception(struct Regs *regs, const char *name) {
     Warn("%s", name);
+    info_registers(regs);
+    Info("stval %lx", read_csr(stval));
+    Info("sepc %lx", read_csr(sepc));
+
     while (1) {
     }
     return regs;
@@ -542,6 +587,7 @@ void *smod_load_access_exception(struct Regs *regs, const char *name) {
     Info("sepc %lx", read_csr(sepc));
     while (1) {
     }
+    process_exit();
     return regs;
 }
 void *smod_storage_address_not_aligned(struct Regs *regs, const char *name) {
@@ -579,9 +625,11 @@ void *smod_user_syscall(struct Regs *regs, const char *name) {
     Info("ret %x", ret);
     Warn("%s", name);
 #endif
-    regs->normal_regs.a0 = ret;
+    if (get_current_process() != NULL) {
+        get_current_process()->pcb.context->normal_regs.a0 = ret;
+    }
 
-    return regs;
+    return NULL;
 }
 
 void *smod_instructions_page_fault(struct Regs *regs, const char *name) {
@@ -605,6 +653,7 @@ void *smod_load_page_fault(struct Regs *regs, const char *name) {
     Warn("%s", name);
     while (1) {
     }
+    process_exit();
     return regs;
 }
 void *smod_store_page_fault(struct Regs *regs, const char *name) {

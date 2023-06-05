@@ -86,6 +86,7 @@ void init_mem_pool(mem_pool_t *mem, uint64_t mem_start, page_t *meta_data_start,
 }
 
 void mem_freelist_info(mem_pool_t *mem) {
+#if DEBUG
     list_head_t *head;
     for (int order_idx = 0; order_idx < MAX_ORDER; order_idx++) {
         Info("order %d list have %d free pages, head page addr %p", order_idx,
@@ -97,6 +98,7 @@ void mem_freelist_info(mem_pool_t *mem) {
                  ((page_t *)head)->order);
         }
     }
+#endif
 }
 
 // 除了内存初始化的环境，其他的环境下都需要对操作的指针判断是否为空

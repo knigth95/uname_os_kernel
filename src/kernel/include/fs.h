@@ -1,5 +1,6 @@
 #ifndef __FS_H__
 #define __FS_H__
+#include "include/proc.h"
 #include "include/type.h"
 struct BPB_fields {
     // 引导程序代码的跳转指令
@@ -70,19 +71,7 @@ struct fat32_volumes_fields {
     uint8_t BS_BootSign[2];
 };
 
-struct fat32_disk {
-    uint32_t FatStartSector;
-    uint32_t FatSectors;
-    uint32_t RootDirStartSector;
-    uint32_t RootDirSectors;
-    uint32_t DataStartSector;
-    uint32_t DataSectors;
-    uint32_t CountofClusters;
-    uint32_t ThisFATSecNum;
-    uint32_t ThisFATEntOffset;
-};
-
-struct fat_dir {
+struct sfn_entry {
     // DIR_Name:
     // 0xE5 已经删除的条目会将第一个字节设置为E5
     // 0x05
@@ -207,7 +196,7 @@ struct BPB_info {
 
 struct fat32disk {
     struct BPB_info bpb_info;
-#define FILES 1024
+#define FILES 512
     uint8_t fds[FILES];
     struct file *file[FILES];
 };
@@ -216,8 +205,12 @@ typedef struct file {
     // 文件名
     char sfn_name[32];
     char lfn_name[128];
+    // 在使用的文件描述符数量
+    uint32_t openfds;
     // 文件大小
     uint64_t fsize;
+    // fake 文件
+    uint32_t fake;
 #define DIR 1
 #define FILE 0
     // 是否目录
@@ -230,7 +223,11 @@ typedef struct file {
     uint32_t cdata;
     // 创建时间
     uint32_t ctime;
+
     // 权限
+#define READABLE 1 << 2
+#define WRITEABLE 1 << 1
+#define EXCUTABLEEABLE 1 << 0
     uint32_t fflag;
     // 所属簇
     uint32_t start_cluster;
@@ -241,11 +238,57 @@ typedef struct file {
     struct buf *buf;
 } file_t;
 
+typedef long int off_t;
+struct kstat {
+    uint64_t st_dev;
+    uint64_t st_ino;
+    uint32_t st_mode;
+    uint32_t st_nlink;
+    uint32_t st_uid;
+    uint32_t st_gid;
+    uint64_t st_rdev;
+    unsigned long __pad;
+    off_t st_size;
+    uint32_t st_blksize;
+    int __pad2;
+    uint64_t st_blocks;
+    long st_atime_sec;
+    long st_atime_nsec;
+    long st_mtime_sec;
+    long st_mtime_nsec;
+    long st_ctime_sec;
+    long st_ctime_nsec;
+    unsigned __unused[2];
+};
+
+struct free_entry {
+    uint32_t idx;
+    uint32_t sector;
+};
+
+struct dirent {
+    uint64_t d_ino;          // 索引结点号
+    long d_off;              // 到下一个dirent的偏移
+    unsigned short d_reclen; // 当前dirent的长度
+    unsigned char d_type;    // 文件类型
+    char d_name[];           // 文件名
+};
+
+#define O_RDONLY 0x000
+#define O_WRONLY 0x001
+#define O_RDWR 0x002 // 可读可写
+// #define O_CREATE 0x200
+#define O_CREATE 0x40
+#define O_DIRECTORY 0x0200000
+
 void init_fat32(char *data, uintptr_t d);
-uintptr_t list_dir(uint32_t start_sector, char *filename);
+uintptr_t list_dir(uint32_t start_sector, char *filename, AppFileNames_t *afn);
 uint8_t alloc_fd(uintptr_t disk);
-void free_fds(uintptr_t disk, uint8_t fd);
 int open(uintptr_t disk, char *filename);
 int read(uintptr_t disk, uint8_t fd, uintptr_t target_address, uint32_t size);
 void close(uintptr_t disk, uint32_t fd);
+int fs_dup(uintptr_t disk, uint32_t fd);
+int fs_dup3(uintptr_t disk, uint32_t fd, uint32_t fd3);
+uint64_t find_free_direntry();
+uintptr_t fake_new_file(char *name);
 #endif

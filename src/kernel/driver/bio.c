@@ -2,7 +2,7 @@
 #include "include/type.h"
 #include "include/virtio.h"
 
-#define MAXOPBLOCKS 10         // max # of blocks any FS op writes
+#define MAXOPBLOCKS 512        // max # of blocks any FS op writes
 #define NBUF (MAXOPBLOCKS * 3) // size of disk block cache
 struct {
     struct buf buf[NBUF];

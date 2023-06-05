@@ -97,6 +97,6 @@ typedef struct {
     long r_addend;
 } Elf64_Rela_t;
 
-uintptr_t parser_elf_file(const char *address, Proc_t *proc);
+uintptr_t parser_elf_file(const char *address, Proc_t *proc, int free);
 
 #endif

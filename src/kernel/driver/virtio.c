@@ -6,6 +6,7 @@
 #include "include/riscv.h"
 #include "include/string.h"
 
+#undef DEBUG
 static struct disk {
 #define PAGE_SIZE 4096
     char pages[2 * PAGE_SIZE];
@@ -63,17 +64,25 @@ static int virtio_queue_init() {
     disk.avail = (void *)PALIGN_UP(avail_addr, 16);
 
     uint64_t used_addr = (uint64_t)((char *)disk.pages + 4096);
+#if DEBUG
     Info("used addr :%x", used_addr);
+#endif
 
     // used ring对齐到页面大小
     disk.used = (void *)PALIGN_UP(used_addr, 2);
+
+#if DEBUG
     Info("palign up used addr : %x", disk.used);
+#endif
 
     // mmio要求写入该寄存器
     // pci貌似要求不写该寄存器
     // 队列大小（队列条目数）写入NUM寄存器
     WRITE_VIRTIO_REG(QUEUE_NUM_W, NUM);
+
+#if DEBUG
     Info("max_queue_num %d", max_queue_num);
+#endif
 
     // used ring的对齐字节数写入ALIGN
     WRITE_VIRTIO_REG(V1_QUEUE_ALIGN_W, PAGE_SIZE);
@@ -125,10 +134,12 @@ int device_init() {
     WRITE_VIRTIO_REG(DEVICE_FEATURES_SEL_W, 0);
     uint32_t features = READ_VIRTIO_REG(DEVICE_FEATURES_R);
 
+#if DEBUG
 struct virtio_blk_config *blk_config = (void *)VIRTIO_REG_ADDR(CONFIG_RW);
     Info("blk_config cap %x", blk_config->capacity);
     Info("blk_config size max %x", blk_config->size_max);
     Info("blk_config seg max %d", blk_config->seg_max);
+#endif
 
     features &= ~FEATURE_V(VIRTIO_BLK_F_RO_P);
     features &= ~FEATURE_V(V1_VIRTIO_BLK_F_SCSI_P);
@@ -138,7 +149,9 @@ struct virtio_blk_config *blk_config = (void *)VIRTIO_REG_ADDR(CONFIG_RW);
     features &= ~FEATURE_V(VIRTIO_RING_F_EVENT_IDX); // unset ring f event idx
     features &=
         ~FEATURE_V(VIRTIO_RING_F_INDIRECT_DESC); // unset ring f indiect desc
+#if DEBUG
     Info("features %x", features);
+#endif
 
     // 写入features之前先写入sel
     WRITE_VIRTIO_REG(DRIVER_FEATURES_SEL_W, 0);
@@ -151,7 +164,9 @@ struct virtio_blk_config *blk_config = (void *)VIRTIO_REG_ADDR(CONFIG_RW);
 
     // 重读feature ok位判断功能集是否被支持，v1版不支持该功能，但是也可以读出
     if (READ_VIRTIO_REG(STATUS_RW) & VIRTIO_DEVICE_STATUS_FEATURES_OK) {
+#if DEBUG
         Info("features ok");
+#endif
     } else {
         return -5;
     }
@@ -298,11 +313,15 @@ void virtio_disk_rw(struct buf *buf, int write) {
 }
 
 int init_virtio() {
-
+    device_init();
+#if DEBUG
     Info("%x", device_init());
     Info("%x", *VIRTIO_REG_ADDR(DEVICE_FEATURES_R));
+#endif
     WRITE_VIRTIO_REG(DEVICE_FEATURES_SEL_W, 0)
+#if DEBUG
     Info("page size %d", READ_VIRTIO_REG(V1_GUEST_PAGE_SIZE));
+#endif
     return 0;
 }
 

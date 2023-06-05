@@ -1,6 +1,7 @@
 #include "include/vm.h"
 #include "include/alloc.h"
 #include "include/buddy.h"
+#include "include/common.h"
 #include "include/extern_symbol.h"
 #include "include/log.h"
 #include "include/mm.h"
@@ -218,34 +219,33 @@ int vmappage(ptp_t *page_table, uintptr_t va, uintptr_t pa, uint64_t size,
 #define PAGE_SIZE (4096)
     int page_num =
         size % PAGE_SIZE == 0 ? size / PAGE_SIZE : size / PAGE_SIZE + 1;
-    vaddr align_va;
-    align_va.addr = PALIGN_DOWN(va, PAGE_SIZE);
-    paddr align_pa;
-    align_pa.addr = PALIGN_DOWN(pa, PAGE_SIZE);
+    //    Info("palign size %x page num1 %d page num2 %d", align_page_size,
+    //    page_num1,
+    //         page_num);
+    uintptr_t align_va = PALIGN_DOWN(va, PAGE_SIZE);
+    uintptr_t align_pa = PALIGN_DOWN(pa, PAGE_SIZE);
 
-    Info("ptp %x va %x pa %x page num %d", page_table, align_va.addr,
-         align_pa.addr, page_num);
 #ifdef DEBUG
-    Info("va %x pa %x page num %d", align_va.addr, align_pa.addr, page_num);
+    Info("ptp %x va %x pa %x page num %d", page_table, align_va, align_pa,
+         page_num);
 #endif
 
     ptp_t *page_ptp;
 
     for (int page_idx = 0; page_idx < page_num;
-            page_idx++, align_va.addr += PAGE_SIZE, align_pa.addr += PAGE_SIZE) {
+            page_idx++, align_va += PAGE_SIZE, align_pa += PAGE_SIZE) {
         // 取到4K页的页表
-        page_ptp = get_4Kpage_ptp(align_va.addr, page_table, 1);
-        Info("page ptp %x", page_ptp);
+        page_ptp = get_4Kpage_ptp(align_va, page_table, 1);
         if (page_ptp == NULL) {
             Error("map failed page ptp is null");
             return 1;
         }
         // 取出页表项并映射到物理地址
         //        Info("ptp %x page %x", page_table, page_ptp);
-        page_ptp->entrys[align_va.vpn0] = paddr2pte(align_pa.addr, perm);
+        page_ptp->entrys[VADDR(align_va).vpn0] = paddr2pte(align_pa, perm);
 
 #ifdef DEBUG
-        Info("paddr %p", paddr2pte(align_pa.addr, perm));
+        Info("paddr %p", paddr2pte(align_pa, perm));
 #endif
     }
     return 0;
@@ -263,7 +263,9 @@ int vmap(uintptr_t ptp, uintptr_t va_start, uintptr_t pa_start, uint64_t size,
     pte_flag_t pte_flag;
     pte_flag.flag = flag;
 
+#ifdef DEBUG
     Info("vmap va_start %x pa_start %x", va_start, pa_start);
+#endif
     return vmappage(ptp_addr, va.addr, pa.addr, size, pte_flag);
 }
 
@@ -389,8 +391,10 @@ void map_trap(uintptr_t ptp_addr) {
     size = (uint64_t)e_tramponline - (uint64_t)s_tramponline;
     flag.flag = FLAG_V | FLAG_X | FLAG_R;
     vmappage((void *)ptp_addr, va, pa, size, flag);
+#ifdef DEBUG
     Info("vmmap trap seg start %p end %p size %d va %p -> pa %p", s_tramponline,
          e_tramponline, size, va, va2pa((void *)ptp_addr, va));
+#endif
 }
 
 void map_kernel(uintptr_t ptp_addr, mem_pool_t *mem) {

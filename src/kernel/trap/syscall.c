@@ -1,4 +1,5 @@
 #include "include/syscall.h"
+#include "include/alloc.h"
 #include "include/clock.h"
 #include "include/fs.h"
 #include "include/log.h"
@@ -7,8 +8,10 @@
 #include "include/string.h"
 #include "include/type.h"
 #include "include/uart.h"
+#include "include/virtio.h"
 #include "include/vm.h"
 
+#undef DEBUG
 uint64_t func_SYS_io_setup(args_t *args) {
     return 0;
 }
@@ -61,7 +64,17 @@ uint64_t func_SYS_fremovexattr(args_t *args) {
     return 0;
 }
 uint64_t func_SYS_getcwd(args_t *args) {
-    return 0;
+    // half fake get cwd
+    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    uintptr_t buf_ptr = va2pa((void *)ptp, args->arg0);
+    uint32_t len = args->arg1;
+    uint32_t cwd_len = strlen(get_current_process()->pcb.cwd);
+    if (len > cwd_len) {
+        len = cwd_len;
+    }
+    memmove((void *)buf_ptr, get_current_process()->pcb.cwd, len);
+
+    return args->arg0;
 }
 uint64_t func_SYS_lookup_dcookie(args_t *args) {
     return 0;
@@ -79,10 +92,14 @@ uint64_t func_SYS_epoll_pwait(args_t *args) {
     return 0;
 }
 uint64_t func_SYS_dup(args_t *args) {
-    return 0;
+    extern struct fat32disk disk;
+    int dup_fd = fs_dup((uintptr_t)&disk, args->arg0);
+    return dup_fd;
 }
 uint64_t func_SYS_dup3(args_t *args) {
-    return 0;
+    extern struct fat32disk disk;
+    int dup_fd = fs_dup3((uintptr_t)&disk, args->arg0, args->arg1);
+    return dup_fd;
 }
 uint64_t func_SYS_fcntl(args_t *args) {
     return 0;
@@ -112,6 +129,15 @@ uint64_t func_SYS_mknodat(args_t *args) {
     return 0;
 }
 uint64_t func_SYS_mkdirat(args_t *args) {
+    // fake mkdir
+struct file *f = (void *)kalloc(sizeof(struct file));
+    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    uintptr_t name_addr = (uintptr_t)va2pa((void *)ptp, args->arg1);
+    f->isdir = 1;
+    memmove(f->lfn_name, (void *)name_addr, strlen((char *)name_addr));
+    extern struct fat32disk disk;
+    int fd = alloc_fd((uintptr_t)&disk);
+    disk.file[fd] = f;
     return 0;
 }
 uint64_t func_SYS_unlinkat(args_t *args) {
@@ -154,6 +180,11 @@ uint64_t func_SYS_faccessat(args_t *args) {
     return 0;
 }
 uint64_t func_SYS_chdir(args_t *args) {
+    // fake chdir
+    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    uintptr_t path_addr = va2pa((void *)ptp, args->arg0);
+    memmove(get_current_process()->pcb.cwd, (void *)path_addr,
+            strlen((char *)path_addr));
     return 0;
 }
 uint64_t func_SYS_fchdir(args_t *args) {
@@ -176,13 +207,31 @@ uint64_t func_SYS_fchown(args_t *args) {
 }
 uint64_t func_SYS_openat(args_t *args) {
     extern struct fat32disk disk;
-    int fd = open(
-                 (uintptr_t)&disk,
-                 (void *)va2pa((void *)get_current_process()->pcb.ptp_addr, args->arg1));
-    if (fd == 0) {
-        return -1;
+    int fd = 0;
+    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    uintptr_t src_buf_ptr = va2pa((void *)ptp, args->arg1);
+    // 需要创建新文件，先创建个fake file
+    extern struct fat32disk disk;
+    if ((long)args->arg0 > 0 && disk.file[args->arg0]->isdir) {
+        fd = alloc_fd((uintptr_t)&disk);
+        return fd;
     }
-    return fd;
+    if (args->arg2 & O_CREATE) {
+    struct file *f = (void *)fake_new_file((char *)src_buf_ptr);
+        fd = alloc_fd((uintptr_t)&disk);
+        disk.file[fd] = f;
+        return fd;
+    } else if (args->arg2 & O_DIRECTORY) {
+        // fake open dir
+        fd = alloc_fd((uintptr_t)&disk);
+        return fd;
+    } else {
+        fd = open((uintptr_t)&disk, (char *)src_buf_ptr + 2);
+        if (fd == 0) {
+            return -1;
+        }
+        return fd;
+    }
 }
 uint64_t func_SYS_close(args_t *args) {
     extern struct fat32disk disk;
@@ -193,6 +242,19 @@ uint64_t func_SYS_vhangup(args_t *args) {
     return 0;
 }
 uint64_t func_SYS_pipe2(args_t *args) {
+    extern struct fat32disk disk;
+    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    uint64_t *fds_ptr = (void *)va2pa((void *)ptp, args->arg0);
+struct file *f = (void *)fake_new_file("pipe");
+    int fd1 = alloc_fd((uintptr_t)&disk);
+
+    disk.file[fd1] = f;
+
+    int fd2 = fs_dup((uintptr_t)&disk, fd1);
+
+    fds_ptr[0] = fd1;
+    fds_ptr[1] = fd2;
+
     return 0;
 }
 uint64_t func_SYS_quotactl(args_t *args) {
@@ -205,15 +267,46 @@ uint64_t func_SYS_lseek(args_t *args) {
     return 0;
 }
 uint64_t func_SYS_read(args_t *args) {
-    return 0;
+    uint32_t fd = args->arg0;
+    uintptr_t buf =
+        va2pa((void *)get_current_process()->pcb.ptp_addr, args->arg1);
+    uint32_t size = args->arg2;
+#ifdef DEBUG
+    Info("fd %d buf %x size %d", fd, buf, size);
+#endif
+
+    extern struct fat32disk disk;
+    uint32_t ret = read((uintptr_t)&disk, fd, buf, size);
+#ifdef DEBUG
+    Info("read %s ret %d fsize %d", disk.file[fd]->lfn_name, ret,
+         disk.file[fd]->fsize);
+#endif
+
+    return ret;
 }
 uint64_t func_SYS_write(args_t *args) {
+    extern struct fat32disk disk;
+#define STDIN 0
+#define STDOUT 1
+#define STDERR 2
+    int fd = args->arg0;
     uintptr_t ptr =
         va2pa((void *)get_current_process()->pcb.ptp_addr, args->arg1);
-    int i = 0;
-    for (i = 0; i < args->arg2; i++) {
-        uart_putc(((char *)ptr)[i]);
+    int size = args->arg2;
+    if (fd == STDOUT || disk.file[fd] == NULL) {
+        int i = 0;
+        for (i = 0; i < size; i++) {
+            uart_putc(((char *)ptr)[i]);
+        }
+        return size;
+    } else {
+        if (disk.file[fd]->fake == 1) {
+            memmove((disk.file[fd]->buf)->data, (void *)ptr, size);
+            disk.file[fd]->fsize = size + disk.file[fd]->fsize;
+        }
+        //        Info("other fd");
     }
+
     return 0;
 }
 uint64_t func_SYS_readv(args_t *args) {
@@ -262,6 +355,27 @@ uint64_t func_SYS_fstatat(args_t *args) {
     return 0;
 }
 uint64_t func_SYS_fstat(args_t *args) {
+    extern struct fat32disk disk;
+
+    uint32_t fd = args->arg0;
+    struct kstat *ptr =
+        (void *)va2pa((void *)get_current_process()->pcb.ptp_addr, args->arg1);
+    ptr->st_dev = 1;
+    ptr->st_ino = 1;
+    ptr->st_mode = 1;
+    ptr->st_nlink = 1;
+    ptr->st_uid = 1;
+    ptr->st_rdev = 1;
+    ptr->st_size = disk.file[fd]->fsize;
+    ptr->st_blksize = 512;
+    ptr->st_blocks = disk.file[fd]->clusters * 8;
+    ptr->st_atime_sec = disk.file[fd]->mtime;
+    ptr->st_atime_nsec = disk.file[fd]->mtime;
+    ptr->st_mtime_sec = disk.file[fd]->mtime;
+    ptr->st_mtime_nsec = disk.file[fd]->mtime;
+    ptr->st_ctime_sec = disk.file[fd]->ctime;
+    ptr->st_ctime_nsec = disk.file[fd]->ctime;
+
     return 0;
 }
 uint64_t func_SYS_sync(args_t *args) {
@@ -302,7 +416,11 @@ uint64_t func_SYS_personality(args_t *args) {
 }
 uint64_t func_SYS_exit(args_t *args) {
     process_exit();
-    return 0;
+    int ret = 0;
+    if (get_current_process() != NULL) {
+        ret = get_current_process()->pcb.context->normal_regs.a0;
+    }
+    return ret;
 }
 uint64_t func_SYS_exit_group(args_t *args) {
     return 0;
@@ -326,6 +444,13 @@ uint64_t func_SYS_get_robust_list(args_t *args) {
     return 0;
 }
 uint64_t func_SYS_nanosleep(args_t *args) {
+    //    uintptr_t ptp=get_current_process()->pcb.ptp_addr;
+    //    uintptr_t ptr=va2pa((void*)ptp, args->arg0);
+    //    struct TimeVal *time=(void*)ptr;
+    for (int i = 0; i < 10000000; i++) {
+        i = i + 1;
+        i = i - 1;
+    }
     return 0;
 }
 uint64_t func_SYS_getitimer(args_t *args) {
@@ -397,7 +522,7 @@ uint64_t func_SYS_sched_getaffinity(args_t *args) {
 uint64_t func_SYS_sched_yield(args_t *args) {
     yield();
 
-    return 0;
+    return get_current_process()->pcb.context->normal_regs.a0;
 }
 uint64_t func_SYS_sched_get_priority_max(args_t *args) {
     return 0;
@@ -569,7 +694,11 @@ uint64_t func_SYS_getpid(args_t *args) {
     return get_current_process()->pcb.pid;
 }
 uint64_t func_SYS_getppid(args_t *args) {
-    return get_current_process()->parent_proc->pcb.pid + 1;
+    int ret = 0;
+    if (get_current_process()->parent_proc != NULL) {
+        ret = get_current_process()->parent_proc->pcb.pid;
+    }
+    return ret;
 }
 uint64_t func_SYS_getuid(args_t *args) {
     return 0;
@@ -700,6 +829,11 @@ uint64_t func_SYS_brk(args_t *args) {
     }
 }
 uint64_t func_SYS_munmap(args_t *args) {
+    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    uintptr_t start = va2pa((void *)ptp, args->arg0);
+    uint32_t len = args->arg1;
+    pfree(start);
+    unvmappage((void *)ptp, start, len);
     return 0;
 }
 uint64_t func_SYS_mremap(args_t *args) {
@@ -714,15 +848,50 @@ uint64_t func_SYS_request_key(args_t *args) {
 uint64_t func_SYS_keyctl(args_t *args) {
     return 0;
 }
+
 uint64_t func_SYS_clone(args_t *args) {
-    Proc_t *fork_proc = fork();
+    //    Info("clone");
+    //    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    //    uintptr_t stack = NULL;
+    //    if (args->arg1 != NULL) {
+    //        stack = va2pa((void *)ptp, args->arg1);
+    //    }
+    Proc_t *fork_proc = fork(args->arg1);
     return PROC_PCB(fork_proc).pid;
 }
+
 uint64_t func_SYS_execve(args_t *args) {
+    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    uintptr_t name_addr = va2pa((void *)ptp, args->arg0);
+
+    load_task((void *)name_addr);
+    process_exit();
+
     return 0;
 }
 uint64_t func_SYS_mmap(args_t *args) {
-    return 0;
+    extern struct fat32disk disk;
+    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    uintptr_t start = NULL;
+    uint32_t len = args->arg1;
+    //    uint32_t prot=args->arg2;
+    //    uint32_t flag=args->arg3;
+    uint32_t fd = args->arg4;
+    uint32_t off = args->arg5;
+
+    if (args->arg0 != NULL) {
+        start = va2pa((void *)ptp, args->arg0);
+    } else {
+        start = kalloc(len - off);
+    }
+
+    if (disk.file[fd]->fake == 1) {
+        memmove((void *)start, (disk.file[fd]->buf)->data, len);
+        vmap(ptp, start, start, len, FLAG_V | FLAG_U | FLAG_R | FLAG_W);
+    } else {
+    }
+
+    return start;
 }
 uint64_t func_SYS_fadvise64(args_t *args) {
     return 0;
@@ -791,10 +960,18 @@ uint64_t func_SYS_arch_specific_syscall(args_t *args) {
     return 0;
 }
 uint64_t func_SYS_wait4(args_t *args) {
-    PROC_PCB(get_current_process()).waitid = args->arg0;
-    PROC_PCB_CONTEXT(get_current_process())->normal_regs.a0 = args->arg1;
+    int pid = args->arg0;
+    uintptr_t ptp = get_current_process()->pcb.ptp_addr;
+    uintptr_t status = va2pa((void *)ptp, args->arg1);
+    //    uint32_t options;
+    PROC_PCB(get_current_process()).waitid = pid;
+    PROC_PCB(get_current_process()).waitstatus = status;
+    if (pid > 0) {
+        insert_proc_wait_queue(get_current_process(), pid);
+        global_manager.current_proc = NULL;
+    }
     sched();
-    return 0;
+    return get_current_process()->pcb.context->normal_regs.a0;
 }
 uint64_t func_SYS_prlimit64(args_t *args) {
     return 0;

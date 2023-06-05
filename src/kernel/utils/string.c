@@ -1,4 +1,5 @@
 #include "include/string.h"
+#include "include/log.h"
 #include "include/type.h"
 
 void *memset(void *dst, int c, uint64_t n) {

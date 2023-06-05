@@ -11,6 +11,7 @@ typedef struct queue {
     int front;
     int tail;
     int empty;
+    int avail_num;
 } Queue_t;
 
 void init_queue(struct queue *);

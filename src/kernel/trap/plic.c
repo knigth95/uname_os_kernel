@@ -17,15 +17,16 @@ static inline uint32_t CPU_TO_MHART(uint32_t cpu) {
     return 2 * cpu;
 }
 
+extern uint64_t global_hartid;
 void plic_init() {
 
-#define HART_ID r_tp();
+#define HART_ID global_hartid;
 
     uint32_t hart = HART_ID;
-    Info("%lx", hart);
+    //    Info("%lx", hart);
 
     // 开启uart中断和virtio-blk设备中断
-    Error("CPU_TO_HART %d %d", CPU_TO_SHART(hart), hart);
+    // Error("CPU_TO_HART %d %d", CPU_TO_SHART(hart), hart);
     *((volatile uint32_t *)PLIC_INTERRUPT_ENABLE(CPU_TO_SHART(hart))) =
         1 << UART0_IRQ | 1 << VIRTIO_IRQ;
     //    // 1=3

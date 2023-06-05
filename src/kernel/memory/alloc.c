@@ -8,6 +8,7 @@
 #include "include/type.h"
 #include "include/vm.h"
 
+#undef DEBUG
 extern mem_pool_t global_mem;
 
 uintptr_t realloc(uintptr_t old_address, uint32_t new_length) {
@@ -28,22 +29,43 @@ uintptr_t vmalloc(uint64_t size, uintptr_t ptp) {
 // 内核分配不定size的内存，由于内核中使用的内存实际并不受限与内存管理系统，所以需要每次alloc都重置为0，否则可能会有无法预料的bug
 uintptr_t inline kalloc(uint64_t size) {
     uintptr_t ptr = palloc(PALIGN_UP(size, 4096));
+
+#ifdef DEBUG
+    Info("size %x", PALIGN_UP(size, 4096));
+    while (ptr + PALIGN_UP(size, 4096) >= 0x88000000) {
+        Error("error %x %x", ptr, PALIGN_UP(size, 4096));
+        ptr = palloc(PALIGN_UP(size, 4096));
+    }
+#endif
     memset((void *)ptr, 0, PALIGN_UP(size, 4096));
 
     return ptr;
 }
 
 uintptr_t palloc(uint64_t size) {
-    uint64_t order = (size >> 12);
-    order = powers(order);
-    page_t *page = buddy_alloc_page(order, &global_mem);
+    uint64_t order = (PALIGN_UP(size, 4096) >> 12);
+    page_t *page = NULL;
+    //    if (order == 0 || order == 1) {
+    if (order == 0) {
+        // order =0 4096 order = 1 8192 (1<<order)<<12
+        page = buddy_alloc_page(0, &global_mem);
+    } else {
+        order = powers(order);
+        page = buddy_alloc_page(order, &global_mem);
+    }
+
+#ifdef DEBUG
+    Info("order %d", order);
+#endif
+
     return buddy_page_to_paddr(page);
 }
 
 // 释放内存
 void pfree(uintptr_t addr) {
-    //    uintptr_t real_addr =
-    //        va2pa((void *)get_current_process()->pcb.ptp_addr, addr);
+#if DEBUG
+    Info("free %x", addr);
+#endif
     page_t *page = buddy_paddr_to_page(&global_mem, addr);
     buddy_free_page(page);
 }

@@ -18,6 +18,21 @@
 #define SBI_SHUTDOWN 0
 #define SHUTDOWN 8
 
+#define FUNC_EID 0x10
+#define sbi_get_sbi_spec_version 0
+#define sbi_get_sbi_impl_id 1
+#define sbi_get_sbi_impl_version 2
+#define sbi_probe_extension 3
+#define sbi_get_mvendorid 4
+#define sbi_get_marchid 5
+#define sbi_get_mimpid 6
+
+#define HSM_FUNC_EID 0x48534D
+#define sbi_hart_start 0
+#define sbi_hart_stop 1
+#define sbi_hart_get_status 2
+#define sbi_hart_suspend 3
+
 #define SBI_CALL(which, arg0, arg1, arg2, arg3)                                \
   ({                                                                           \
     register uintptr_t a0 asm("a0") = (uintptr_t)(arg0);                       \

@@ -26,29 +26,19 @@ ktrap:
 
     csrr t0, sstatus
     csrr t1, sepc
-    csrr t2, sscratch
-    csrr t3, satp
 
     sd sp, 2*8(sp)
 
     sd t0, 32*8(sp)
     sd t1, 33*8(sp)
-    sd t2, 34*8(sp)
-    sd t3, 35*8(sp)
 
-    j all_handler 
+    mv a0, sp
+
+    jal kernel_handler 
 
 krestore:
 
-    mv sp, a1
-    
-    ld t0, 32*8(sp)
-    ld t1, 33*8(sp)
-    ld t2, 34*8(sp)
-
-    csrw sstatus, t0
-    csrw sepc, t1
-    csrw sscratch, t2
+    mv sp, a0
 
     ld x1, 1*8(sp)
     ld x3, 3*8(sp)
@@ -58,7 +48,13 @@ krestore:
         LOAD_GP %n
         .set n, n+1
     .endr
-    
+
+    ld t0, 32*8(sp)
+    ld t1, 33*8(sp)
+
+    csrw sstatus, t0
+    csrw sepc, t1
+   
     addi sp, sp, 36*8
     
     sret

@@ -33,9 +33,11 @@ typedef struct ProcessControlBlock {
     // 内核态栈空间
     uint64_t kstack;
     // 等待进程结束
-    uint64_t waitid;
+    int waitid;
+
+    uintptr_t waitstatus;
     // 当前目录
-    char *cwd;
+    char cwd[32];
     // 累计cpu时间
     uint64_t times;
     // 运行开始时间
@@ -44,8 +46,8 @@ typedef struct ProcessControlBlock {
     uint64_t brk;
     // 上下文，指向内核栈合适的位置
     TaskContext_t *context;
-    // smod上下文
-    TaskContext_t *kcontext;
+
+    Queue_t wait_queue;
 } PCB_t;
 
 typedef struct Proc Proc_t;
@@ -68,10 +70,19 @@ typedef struct ProcManager {
 
     Proc_t *current_proc;
 
+    int last_pid;
+
     Queue_t proc_queue;
+
+    Queue_t wait_queue;
 
 } ProcManager_t;
 extern ProcManager_t global_manager;
+
+typedef struct AppFileNames {
+    int idx;
+    uintptr_t app_files[1024];
+} AppFileNames_t;
 
 Proc_t *new_proc(uintptr_t target_app_address, const char *name, int fork);
 
@@ -80,9 +91,11 @@ void process_init();
 void process_exit();
 Proc_t *get_current_process();
 
-void alloc_proc(uintptr_t target_app_address, const char *name);
+int alloc_proc(uintptr_t target_app_address, const char *name);
 void sched();
 void yield();
 Proc_t *fetch_task();
-Proc_t *fork();
+Proc_t *fork(uintptr_t child_proc);
+int load_task(char *name);
+int insert_proc_wait_queue(Proc_t *process, int pid);
 #endif
