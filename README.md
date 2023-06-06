@@ -14,8 +14,7 @@
 
 ### 文件系统
 
-* [文件系统介绍](docs/fat32-design.md)
-* [文件系统实现](docs/fat32-impl.md)
+* [文件系统介绍](docs/fat32.md)
 
 ### 用户程序
 
