@@ -30,27 +30,7 @@ FAT32 文件系统的第一个磁盘块为超级块，包含文件系统的基�
 ## 文件
 
 `init_fat32(...)` 函数通过验证磁盘引导扇区和 FAT32 卷段中各个字段的值来初始化 FAT32 磁盘。如果任何字段具有无效值，则返回错误并中止初始化。如果初始化成功，有关磁盘的信息将存储在 disk 参数指向的 `fat32disk` 结构中。
-`alloc_fd(...)` 函数分配一个文件描述符以用于指定的 FAT32 磁盘。文件描述符表示为文件描述符标志数组的索引，该数组存储在 disk 参数指向的 `fat32disk` 结构
-| 字节位置 | 内容 | 名称 |
-| -- | -- | -- |
-| 11~12 | 每个块的大小 | `BPB_BytsPerSec` |
-| 13 | 每个簇包含的块数 | `BPB_SecPerClus` |
-| 14-15 | 保留块的数量 | `BPB_ResvdSecCnt` |
-| 16 | FAT 表的复制份数 | `BPB_NumFATs` |
-| 28~31 | 隐藏块数量 | `BPB_HiddSec` |
-| 32~35 | 文件系统总块数 | `BPB_TotSec32` |
-| 36~39 | 每个 FAT 的块数 | `BPB_FATSz32` |
-| 44~47 | 根目录的第一个簇 | `BPB_RootClus` 
-| 82~89 | 表示文件系统类型 | `BS_FilSysType` |
-
-通过这些读出的数据，可以算出：
-- 第一个数据块的块号 = `BPB_ResvdSecCnt` + (`BPB_NumFATs` * `BPB_FATSz32`)
-- 数据块总数 = `BPB_TotSec32` - `BPB_ResvdSecCnt` - (`BPB_NumFATs` * `FATSz`) - `RootDirSectors`
-- 数据簇总数 = (`BPB_TotSec32` - `FirstDataSector`) / `BPB_SecPerClus`
-
-- 每个簇字节数 `BytesPerCluster` = `BPB_SecPerClus` * `BPB_BytsPerSec`
-
-其中，`FirstDataSector`为第一个数据块的块号。中。如果找到空闲文件描述符，则返回其索引。如果没有空闲文件描述符可用，则返回索引 0。
+`alloc_fd(...)` 函数分配一个文件描述符以用于指定的 FAT32 磁盘。文件描述符表示为文件描述符标志数组的索引，该数组存储在 disk 参数指向的 `fat32disk` 结构。其中，`FirstDataSector`为第一个数据块的块号。中。如果找到空闲文件描述符，则返回其索引。如果没有空闲文件描述符可用，则返回索引 0。
 ```c
 struct fat32disk {
     struct BPB_info bpb_info;
